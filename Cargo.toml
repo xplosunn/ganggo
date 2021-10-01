@@ -1,0 +1,8 @@
+[package]
+name = "gango"
+version = "0.0.1"
+authors = ["Graf_Blutwurst"]
+edition = "2018"
+
+[dependencies]
+tui = "0.16.0"
