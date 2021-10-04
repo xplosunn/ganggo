@@ -129,6 +129,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   //clear terminal and print selected item 
   terminal.clear();
-  print!("{}", out_selection);
+  eprint!("{}", out_selection);
   Ok(())
 }
