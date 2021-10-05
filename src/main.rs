@@ -1,9 +1,4 @@
-use std::{
-  error::Error,
-  io, thread,
-  time::{Duration, Instant},
-  vec,
-};
+use std::{collections::hash_map::Entry, error::Error, io::{self, BufRead}, thread, time::{Duration, Instant}, vec};
 
 use termion::{
   async_stdin,
@@ -23,12 +18,22 @@ use std::io::{stdout, Read, Write};
 
 use std::sync::mpsc;
 
-/*enum Event<I> {
-  Input(I),
-  Tick,
-} */
+use fuzzy_matcher::skim::{SkimMatcherV2};
+use fuzzy_matcher::FuzzyMatcher;
 
-fn render_pets<'a>(raw_items: &Vec<&'a str>, selection_state: &ListState) -> List<'a> {
+struct AppState {
+  matcher: SkimMatcherV2,
+  raw_items: Vec<String>,
+  filtered_items: Vec<String>,
+  out_selection: String,
+  search_str: String,
+}
+
+struct UiState {
+  selection_state: ListState,
+}
+
+fn render_selection<'a>(raw_items: &Vec<String>, selection_state: &ListState) -> List<'a> {
   let selection_block = Block::default()
     .borders(Borders::ALL)
     .style(Style::default().fg(Color::White))
@@ -54,35 +59,106 @@ fn render_pets<'a>(raw_items: &Vec<&'a str>, selection_state: &ListState) -> Lis
   list
 }
 
+fn selection_up(ui_state: &mut UiState, app_state: &mut AppState) {
+  if let Some(selected) = ui_state.selection_state.selected() {
+    if (selected > 0) {
+      ui_state.selection_state.select(Some(selected - 1));
+    } else {
+      ui_state
+        .selection_state
+        .select(Some(app_state.filtered_items.len() - 1));
+    }
+  }
+}
+
+fn selection_down(ui_state: &mut UiState, app_state: &mut AppState) {
+  if let Some(selected) = ui_state.selection_state.selected() {
+    if (selected < app_state.filtered_items.len() - 1) {
+      ui_state.selection_state.select(Some(selected + 1));
+    } else {
+      ui_state.selection_state.select(Some(0));
+    }
+  }
+}
+
+fn select_current(ui_state: &mut UiState, app_state: &mut AppState) {
+  if let Some(selected) = ui_state.selection_state.selected() {
+    let selected_item = &app_state.filtered_items[selected];
+    app_state.out_selection = selected_item.clone();
+  }
+}
+
+enum FilterUpdate {
+  Append { c:char },
+  Backspace
+}
+
+fn update_filter(ui_state: &mut UiState, app_state: &mut AppState, update: FilterUpdate) {
+  match update {
+    FilterUpdate::Append {c} => {
+      app_state.search_str.push(c);
+      app_state.filtered_items = app_state.raw_items.iter().filter(
+	|entry| app_state.matcher.fuzzy_match(entry, &app_state.search_str).is_some()
+      ).cloned().collect();
+      ui_state.selection_state.select(Some(0));
+    },
+    FilterUpdate::Backspace => {
+      app_state.search_str.pop();
+      if (app_state.search_str.is_empty()) {
+	app_state.filtered_items = app_state.raw_items.clone();
+      } else {
+	app_state.filtered_items = app_state.raw_items.iter().filter(
+	  |entry| app_state.matcher.fuzzy_match(entry, &app_state.search_str).is_some()
+	).cloned().collect();
+      }
+      ui_state.selection_state.select(Some(0));
+    }
+  }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+  let init:Vec<String> = io::stdin().lock().lines().map(|s| s.unwrap()).collect();
+
+  let mut app_state = AppState {
+    matcher:SkimMatcherV2::default(),
+    raw_items: init.clone(),
+    filtered_items: init.clone(),
+    out_selection: "".to_string(),
+    search_str: "".to_string(),
+  };
+
+  let mut ui_state = UiState {
+    selection_state: ListState::default(),
+  };
+
   // Terminal initialization
   let mut stdin = async_stdin().bytes();
   let stdout = io::stdout().into_raw_mode()?;
   let backend = TermionBackend::new(stdout);
   let mut terminal = Terminal::new(backend)?;
 
-  let mut selection_state = ListState::default();
-  selection_state.select(Some(0));
+  ui_state.selection_state.select(Some(0));
 
   //clear the terminal on startup
   terminal.clear();
-
-  let raw_items = vec!["first", "second"];
-
-  let mut out_selection = "";
 
   let loopOut: Result<(), Box<dyn Error>> = loop {
     terminal.draw(|f| {
       // Create two chunks with equal horizontal screen space
       let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(100)].as_ref())
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
         .split(f.size());
 
-      let list_chunk = chunks[0];
+      let search_chunk = chunks[0];
+      let list_chunk = chunks[1];
 
-      let selection = render_pets(&raw_items, &selection_state);
-      f.render_stateful_widget(selection, list_chunk, &mut selection_state);
+      let search_input = Paragraph::new(app_state.search_str.as_ref())
+        .block(Block::default().borders(Borders::ALL).title("Search"));
+
+      let selection = render_selection(&app_state.filtered_items, &ui_state.selection_state);
+      f.render_widget(search_input, search_chunk);
+      f.render_stateful_widget(selection, list_chunk, &mut ui_state.selection_state);
     })?;
 
     let key_input_maybe = stdin.next();
@@ -92,32 +168,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         Ok(key_input) => {
           let event = termion::event::parse_event(key_input, &mut stdin)?;
           match event {
-            event::Event::Key(Key::Char('q')) => break Ok(()),
             event::Event::Key(Key::Down) => {
-              if let Some(selected) = selection_state.selected() {
-                if (selected < raw_items.len() - 1) {
-                  selection_state.select(Some(selected + 1));
-                } else {
-                  selection_state.select(Some(0));
-                }
-              }
+              selection_down(&mut ui_state, &mut app_state);
             }
             event::Event::Key(Key::Up) => {
-              if let Some(selected) = selection_state.selected() {
-                if (selected > 0) {
-                  selection_state.select(Some(selected - 1));
-                } else {
-                  selection_state.select(Some(raw_items.len() - 1));
-                }
-              }
+              selection_up(&mut ui_state, &mut app_state);
             }
             event::Event::Key(Key::Char('\n')) => {
-              if let Some(selected) = selection_state.selected() {
-                let selected_item = raw_items[selected];
-                out_selection = selected_item;
-                break Ok(());
-              }
-            }
+	      select_current(&mut ui_state, &mut app_state);
+	      break Ok(());
+	    }
+            event::Event::Key(Key::Char(ch)) => update_filter(&mut ui_state, &mut app_state, FilterUpdate::Append { c: ch }),
+            event::Event::Key(Key::Backspace) => update_filter(&mut ui_state, &mut app_state, FilterUpdate::Backspace),
             _ => {}
           }
         }
@@ -127,8 +189,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
   };
 
-  //clear terminal and print selected item 
+  //clear terminal and print selected item
   terminal.clear();
-  eprint!("{}", out_selection);
+  eprint!("{}", app_state.out_selection);
   Ok(())
 }

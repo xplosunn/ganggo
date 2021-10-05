@@ -1,5 +1,5 @@
 {
-  description = "gango";
+  description = "ganggo";
 
   inputs = {
     fenix = {
