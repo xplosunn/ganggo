@@ -25,12 +25,21 @@
           ganggo = (naersk.lib.${system}.override {
             inherit (fenix.packages.${system}.minimal) cargo rustc;
           }).buildPackage { src = ./.; };
-          gg = pkgs.writeShellScriptBin "gg" ''
-            #This is a launcher script that takes care of re-redirecting to stdout so ganggo can be used in bash sensibly
-            #Because ganggo draws on the terminal, we have to print the selection to stderr
-            { selection=$(cat | ${ganggo}/bin/ganggo 2>&1 1>&$out); } {out}>&1
-            echo $selection
-          '';
+          gg_bash = pkgs.writeTextFile {
+            name = "gg_bash_lib.sh";
+            text = ''
+              #This is a launcher script that takes care of re-redirecting to stdout so ganggo can be used in bash sensibly
+              #Because ganggo draws on the terminal, we have to print the selection to stderr
+              #To then use it we sadly can't just do something like selection=$(printf "a\nb" | gango 2>&1) because that still breaks terminal raw mode
+              #So we gotta be uhhhh.... creative
+              gg_launch() {
+                entries=$1
+                outVarName=$2
+                { selection=$(printf $1 | ${ganggo}/bin/ganggo 2>&1 1>&$out); } {out}>&1
+                declare -g "$outVarName"=$selection
+              }
+            '';
+          };
         };
 
         defaultPackage = packages.ganggo;
