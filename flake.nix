@@ -36,7 +36,7 @@
                 entries=$1
                 outVarName=$2
                 hint=$3
-                { selection=$(printf "$entries" | ${ganggo}/bin/ganggo dmenu --hint "$hint" 2>&1 1>&$out); } {out}>&1
+                { selection=$(printf "$entries" | ${ganggo}/bin/ganggo --hint "$hint" dmenu 2>&1 1>&$out); } {out}>&1
                 declare -g "$outVarName"="$selection"
               }
             '';
