@@ -25,7 +25,7 @@
           ganggo = (naersk.lib.${system}.override {
             inherit (fenix.packages.${system}.minimal) cargo rustc;
           }).buildPackage { src = ./.; };
-          gg_bash = pkgs.writeTextFile {
+          ggBashLib = pkgs.writeTextFile {
             name = "gg_bash_lib.sh";
             text = ''
               #This is a launcher script that takes care of re-redirecting to stdout so ganggo can be used in bash sensibly
