@@ -5,7 +5,12 @@ use std::{
   vec,
 };
 
-use termion::{async_stdin, event::{self, Key}, raw::IntoRawMode, screen::AlternateScreen};
+use termion::{
+  async_stdin,
+  event::{self, Key},
+  raw::IntoRawMode,
+  screen::AlternateScreen,
+};
 use tui::{
   backend::TermionBackend,
   layout::{Constraint, Direction, Layout},
@@ -192,7 +197,7 @@ fn main() -> Result<(), Box<dyn Error>> {
           match termion::event::parse_event(key_input, &mut stdin) {
             Ok(event) => {
               match event {
-		//For some reason esc doesn't parse properly
+                //For some reason esc doesn't parse properly
                 event::Event::Key(Key::Esc) => {
                   break Ok(false);
                 }
@@ -215,14 +220,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 _ => {}
               }
             }
-	    //so we handle esc here 
+            //so we handle esc here
             Err(key_parse_err) => {
-	      if key_input == 27 {//ESC 
-		break Ok(false);
-	      } else {
-		break Err(Box::new(key_parse_err));
-	      }
-	    }
+              if key_input == 27 {
+                //ESC
+                break Ok(false);
+              } else {
+                break Err(Box::new(key_parse_err));
+              }
+            }
           }
         }
         _ => {}
