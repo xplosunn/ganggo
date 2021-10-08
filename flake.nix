@@ -36,7 +36,7 @@
                 entries=$1
                 outVarName=$2
                 { selection=$(printf $1 | ${ganggo}/bin/ganggo 2>&1 1>&$out); } {out}>&1
-                declare -g "$outVarName"=$selection
+                declare -g "$outVarName"="$selection"
               }
             '';
           };
