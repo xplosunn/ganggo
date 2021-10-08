@@ -26,6 +26,7 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 
 use clap::{AppSettings, Clap};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clap, Debug)]
 #[clap(version = "0.0.1", author = "Graf_Blutwurst")]
@@ -40,6 +41,26 @@ struct Opts {
 #[derive(Clap, Debug)]
 enum Mode {
   Dmenu,
+  #[clap(version = "0.0.1", author = "Graf_Blutwurst")]
+  Task(Tasks)
+}
+
+#[derive(Clap, Debug)]
+struct Tasks {
+  json_str: String 
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+enum Doc {
+  Plain(String)
+}
+
+//TODO: command needs to be patterned so we can support argument collection at some point
+//We probably also need a better view to collect args if they're sub selections 
+#[derive(Serialize, Deserialize, Debug)]
+struct Task {
+ doc : Doc,
+ command: String   
 }
 
 struct AppState {
@@ -163,9 +184,7 @@ fn update_filter(app_state: &mut AppState, update: FilterUpdate) {
   }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-  let opts: Opts = Opts::parse();
-
+fn dmenu_mode(opts: &Opts) -> Result<(), Box<dyn Error>> {
   let init: Vec<String> = io::stdin().lock().lines().map(|s| s.unwrap()).collect();
 
   let mut app_state = AppState {
@@ -282,4 +301,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     eprint!("{}", app_state.out_selection);
   }
   Ok(())
+}
+
+fn task_mode(conf_json: &String) -> Result<(), Box<dyn Error>> {
+  let tasks: Vec<Task> = serde_json::from_str(conf_json)?;
+  println!("{:?}", tasks);
+  Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+  let opts: Opts = Opts::parse();
+
+  match opts.mode {
+    Mode::Dmenu => dmenu_mode(&opts),
+    Mode::Task(tasks) => task_mode(&tasks.json_str)
+  }
 }
