@@ -13,7 +13,7 @@ use termion::{
 };
 use tui::{
   backend::TermionBackend,
-  layout::{Constraint, Direction, Layout},
+  layout::{Alignment, Constraint, Direction, Layout},
   style::{Color, Modifier, Style},
   text::{Span, Spans},
   widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
@@ -24,6 +24,23 @@ use std::io::Read;
 
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+
+use clap::{AppSettings, Clap};
+
+#[derive(Clap, Debug)]
+#[clap(version = "0.0.1", author = "Graf_Blutwurst")]
+#[clap(setting = AppSettings::ColoredHelp)]
+struct Opts {
+  #[clap(short, long)]
+  hint: Option<String>,
+  #[clap(subcommand)]
+  mode: Mode,
+}
+
+#[derive(Clap, Debug)]
+enum Mode {
+  Dmenu,
+}
 
 struct AppState {
   matcher: SkimMatcherV2,
@@ -147,6 +164,8 @@ fn update_filter(app_state: &mut AppState, update: FilterUpdate) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+  let opts: Opts = Opts::parse();
+
   let init: Vec<String> = io::stdin().lock().lines().map(|s| s.unwrap()).collect();
 
   let mut app_state = AppState {
@@ -171,6 +190,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   ui_state.selection_state.select(Some(0));
 
+  //most of these decisions can be done once outside the loop
   let loop_out: Result<bool, Box<dyn Error>> = loop {
     terminal.draw(|f| {
       let chunks = Layout::default()
@@ -178,14 +198,33 @@ fn main() -> Result<(), Box<dyn Error>> {
         .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
         .split(f.size());
 
-      let search_chunk = chunks[0];
+      let top_chunk = chunks[0];
       let list_chunk = chunks[1];
 
       let search_input = Paragraph::new(app_state.search_str.as_ref())
         .block(Block::default().borders(Borders::ALL).title("Search"));
 
       let selection = render_selection(&app_state.filtered_items);
-      f.render_widget(search_input, search_chunk);
+      match &opts.hint {
+        Some(hint) => {
+          let top_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(top_chunk);
+
+          let hint_display = Paragraph::new(hint.as_ref())
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL).title("Hint"));
+
+          let hint_chunk = top_chunks[0];
+          let search_chunk = top_chunks[1];
+          f.render_widget(hint_display, hint_chunk);
+          f.render_widget(search_input, search_chunk);
+        }
+        None => {
+          f.render_widget(search_input, top_chunk);
+        }
+      };
       f.render_stateful_widget(selection, list_chunk, &mut ui_state.selection_state);
     })?;
 
