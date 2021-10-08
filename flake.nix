@@ -19,11 +19,21 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
       in
-      {
+      rec {
 
-        defaultPackage = (naersk.lib.${system}.override {
-          inherit (fenix.packages.${system}.minimal) cargo rustc;
-        }).buildPackage { src = ./.; };
+        packages = rec {
+          ganggo = (naersk.lib.${system}.override {
+            inherit (fenix.packages.${system}.minimal) cargo rustc;
+          }).buildPackage { src = ./.; };
+          gg = pkgs.writeShellScriptBin "gg" ''
+            #This is a launcher script that takes care of re-redirecting to stdout so ganggo can be used in bash sensibly
+            #Because ganggo draws on the terminal, we have to print the selection to stderr
+            { selection=$(cat | ${ganggo}/bin/ganggo 2>&1 1>&$out); } {out}>&1
+            echo $selection
+          '';
+        };
+
+        defaultPackage = packages.ganggo;
 
         devShell = pkgs.mkShell {
           name = "gango-dev-shell";
