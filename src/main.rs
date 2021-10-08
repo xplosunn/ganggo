@@ -5,11 +5,7 @@ use std::{
   vec,
 };
 
-use termion::{
-  async_stdin,
-  event::{self, Key},
-  raw::IntoRawMode,
-};
+use termion::{async_stdin, event::{self, Key}, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{
   backend::TermionBackend,
   layout::{Constraint, Direction, Layout},
@@ -164,17 +160,14 @@ fn main() -> Result<(), Box<dyn Error>> {
   // Terminal initialization
   let mut stdin = async_stdin().bytes();
   let stdout = io::stdout().into_raw_mode()?;
+  let stdout = AlternateScreen::from(stdout);
   let backend = TermionBackend::new(stdout);
   let mut terminal = Terminal::new(backend)?;
 
   ui_state.selection_state.select(Some(0));
 
-  //clear the terminal on startup
-  terminal.clear()?;
-
   let loop_out: Result<bool, Box<dyn Error>> = loop {
     terminal.draw(|f| {
-      // Create two chunks with equal horizontal screen space
       let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
