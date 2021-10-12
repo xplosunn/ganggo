@@ -1,4 +1,4 @@
-use std::{collections::hash_map::Entry, error::Error, io::{self, BufRead}, thread, time::{Duration, Instant}, vec};
+use std::{ error::Error, io::{self, BufRead},  vec, cmp::{min,max}};
 
 use termion::{
   async_stdin,
@@ -25,15 +25,28 @@ struct AppState {
   matcher: SkimMatcherV2,
   raw_items: Vec<String>,
   filtered_items: Vec<String>,
+  filter_masks:Vec<Vec<usize>>,
   out_selection: String,
   search_str: String,
+}
+
+impl AppState {
+
+  fn filtered(&self) -> Vec<(usize, &String)> {
+    match self.filter_masks.last() {
+      Some(mask) => mask.iter().map(
+	|&i| (i, &self.raw_items[i])
+      ).collect(),
+      None => { self.raw_items.iter().enumerate().collect()}
+    }
+  }
 }
 
 struct UiState {
   selection_state: ListState,
 }
 
-fn render_selection<'a>(raw_items: &Vec<String>, selection_state: &ListState) -> List<'a> {
+fn render_selection<'a>(raw_items: &Vec<String>) -> List<'a> {
   let selection_block = Block::default()
     .borders(Borders::ALL)
     .style(Style::default().fg(Color::White))
@@ -61,23 +74,16 @@ fn render_selection<'a>(raw_items: &Vec<String>, selection_state: &ListState) ->
 
 fn selection_up(ui_state: &mut UiState, app_state: &mut AppState) {
   if let Some(selected) = ui_state.selection_state.selected() {
-    if (selected > 0) {
-      ui_state.selection_state.select(Some(selected - 1));
-    } else {
-      ui_state
-        .selection_state
-        .select(Some(app_state.filtered_items.len() - 1));
-    }
+    let bounded_select = min(max(0, selected), app_state.filtered_items.len());
+    let prev = if ((bounded_select as i32) - 1 < 0) {app_state.filtered_items.len() -1 } else {bounded_select -1};
+    ui_state.selection_state.select(Some((prev)));
   }
 }
 
 fn selection_down(ui_state: &mut UiState, app_state: &mut AppState) {
   if let Some(selected) = ui_state.selection_state.selected() {
-    if (selected < app_state.filtered_items.len() - 1) {
-      ui_state.selection_state.select(Some(selected + 1));
-    } else {
-      ui_state.selection_state.select(Some(0));
-    }
+    let bounded_select = min(max(0, selected), app_state.filtered_items.len());
+    ui_state.selection_state.select(Some((bounded_select + 1) % app_state.filtered_items.len()));
   }
 }
 
@@ -97,21 +103,20 @@ fn update_filter(ui_state: &mut UiState, app_state: &mut AppState, update: Filte
   match update {
     FilterUpdate::Append {c} => {
       app_state.search_str.push(c);
-      app_state.filtered_items = app_state.raw_items.iter().filter(
-	|entry| app_state.matcher.fuzzy_match(entry, &app_state.search_str).is_some()
-      ).cloned().collect();
-      ui_state.selection_state.select(Some(0));
+      let updated_filter: Vec<(usize, &String)> = app_state.filtered().into_iter().filter(
+	|&entry| app_state.matcher.fuzzy_match(entry.1, &app_state.search_str).is_some() 
+      ).collect();
+
+      let idx: Vec<usize> = updated_filter.iter().map(|&entry| entry.0).collect();
+      app_state.filtered_items = updated_filter.iter().map(|&entry| entry.1.clone()).collect();
+
+      app_state.filter_masks.push(idx);
     },
     FilterUpdate::Backspace => {
       app_state.search_str.pop();
-      if (app_state.search_str.is_empty()) {
-	app_state.filtered_items = app_state.raw_items.clone();
-      } else {
-	app_state.filtered_items = app_state.raw_items.iter().filter(
-	  |entry| app_state.matcher.fuzzy_match(entry, &app_state.search_str).is_some()
-	).cloned().collect();
-      }
-      ui_state.selection_state.select(Some(0));
+      app_state.filter_masks.pop();
+      let updated_filter: Vec<(usize, &String)> = app_state.filtered();
+      app_state.filtered_items = updated_filter.iter().map(|&entry| entry.1.clone()).collect();
     }
   }
 }
@@ -123,6 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     matcher:SkimMatcherV2::default(),
     raw_items: init.clone(),
     filtered_items: init.clone(),
+    filter_masks: vec![],
     out_selection: "".to_string(),
     search_str: "".to_string(),
   };
@@ -156,7 +162,7 @@ fn main() -> Result<(), Box<dyn Error>> {
       let search_input = Paragraph::new(app_state.search_str.as_ref())
         .block(Block::default().borders(Borders::ALL).title("Search"));
 
-      let selection = render_selection(&app_state.filtered_items, &ui_state.selection_state);
+      let selection = render_selection(&app_state.filtered_items);
       f.render_widget(search_input, search_chunk);
       f.render_stateful_widget(selection, list_chunk, &mut ui_state.selection_state);
     })?;
