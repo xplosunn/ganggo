@@ -32,10 +32,11 @@
               #Because ganggo draws on the terminal, we have to print the selection to stderr
               #To then use it we sadly can't just do something like selection=$(printf "a\nb" | gango 2>&1) because that still breaks terminal raw mode
               #So we gotta be uhhhh.... creative
-              gg_launch() {
+              gg_dmenu_launch() {
                 entries=$1
                 outVarName=$2
-                { selection=$(printf "$entries" | ${ganggo}/bin/ganggo 2>&1 1>&$out); } {out}>&1
+                hint=$3
+                { selection=$(printf "$entries" | ${ganggo}/bin/ganggo --hint "$hint" dmenu 2>&1 1>&$out); } {out}>&1
                 declare -g "$outVarName"="$selection"
               }
             '';
